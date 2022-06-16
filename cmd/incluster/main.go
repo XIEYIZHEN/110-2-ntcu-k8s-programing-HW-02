@@ -11,188 +11,18 @@ import (
 	"time"
 
 	appv1 "k8s.io/api/apps/v1"
-	apiv1 "k8s.io/api/core/v1"
-	coreV1 "k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 )
 
-//deployment
-func createDeploy(clientset *kubernetes.Clientset) *appv1.Deployment {
-	namespace := "default"
-	var replicas int32 = 1
-	deployment := &appv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "nginx",
-			Labels: map[string]string{
-				"app":      "nginx",
-				"env":      "dev",
-				"ntcu-k8s": "hw2",
-			},
-		},
-		Spec: appv1.DeploymentSpec{
-			Replicas: &replicas,
-			Selector: &metav1.LabelSelector{
-				MatchLabels: map[string]string{
-					"app": "nginx",
-					"env": "dev",
-				},
-			},
-			Template: coreV1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "nginx",
-					Labels: map[string]string{
-						"app": "nginx",
-						"env": "dev",
-					},
-				},
-				Spec: coreV1.PodSpec{
-					Containers: []coreV1.Container{
-						{
-							Name:  "nginx",
-							Image: "nginx:1.16.1",
-							Ports: []coreV1.ContainerPort{
-								{
-									Name:          "http",
-									Protocol:      coreV1.ProtocolTCP,
-									ContainerPort: 80,
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-	}
+var (
+	namespace = "default"
+)
 
-	fmt.Println("creat deployment")
-	deploymentList, err := clientset.AppsV1().Deployments(namespace).Create(context.TODO(), deployment, metav1.CreateOptions{})
-	fmt.Println(err, deploymentList)
-	//fmt.Println("name ->", deploymentList.GetObjectMeta().GetName())
-	return deploymentList
-}
-
-//svc
-func createService(clientset *kubernetes.Clientset) {
-
-	namespace := "default"
-	service := &apiv1.Service{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "nginx-svc",
-			Labels: map[string]string{
-				"app":      "nginx",
-				"ntcu-k8s": "hw2",
-			},
-		},
-		Spec: apiv1.ServiceSpec{
-			Selector: map[string]string{
-				"app": "nginx",
-			},
-			Type: coreV1.ServiceTypeNodePort,
-			Ports: []apiv1.ServicePort{
-				{
-					Name:     "http",
-					Port:     80,
-					NodePort: 30440,
-					Protocol: apiv1.ProtocolTCP,
-				},
-			},
-		},
-	}
-	serviceresult, err := clientset.CoreV1().Services(namespace).Create(context.TODO(), service, metav1.CreateOptions{})
-	fmt.Println(err, serviceresult)
-
-}
-
-//delete
-func deleteall(clientset *kubernetes.Clientset) {
-	emptyDeleteOptions := metav1.DeleteOptions{}
-
-	namespace := "default"
-
-	//刪除deplyment
-	errdep := clientset.AppsV1().Deployments(namespace).Delete(context.TODO(), "nginx", emptyDeleteOptions)
-	fmt.Println(errdep)
-
-	// 删除svc
-	errser := clientset.CoreV1().Services(namespace).Delete(context.TODO(), "nginx-svc", emptyDeleteOptions)
-	fmt.Println(errser)
-
-}
-func deleteConfigMap(client kubernetes.Interface, cm *coreV1.ConfigMap) {
-	err := client.
-		CoreV1().
-		ConfigMaps(cm.GetNamespace()).
-		Delete(
-			context.Background(),
-			cm.GetName(),
-			metav1.DeleteOptions{},
-		)
-	if err != nil {
-		panic(err.Error())
-	}
-
-	fmt.Printf("Deleted ConfigMap %s/%s\n", cm.GetNamespace(), cm.GetName())
-}
-
-func readDeploy(clientset kubernetes.Interface, name string) *appv1.Deployment {
-	namespace := "default"
-	read, err := clientset.
-		AppsV1().
-		Deployments(namespace).
-		Get(
-			context.Background(),
-			name,
-			metav1.GetOptions{},
-		)
-	if err != nil {
-		panic(err.Error())
-	}
-
-	fmt.Printf("name %s/%s\n", namespace, read.GetName())
-	return read
-}
-func readConfigMap(clientset kubernetes.Interface, name string) *coreV1.ConfigMap {
-	namespace := "default"
-	read, err := clientset.
-		CoreV1().
-		ConfigMaps(namespace).
-		Get(
-			context.Background(),
-			name,
-			metav1.GetOptions{},
-		)
-	if err != nil {
-		panic(err.Error())
-	}
-
-	fmt.Printf("Read ConfigMap %s/%s, value is %s\n", namespace, read.GetName(), read.Data["foo"])
-	return read
-}
-
-func createConfigMap(client kubernetes.Interface) *coreV1.ConfigMap {
-	namespace := "default"
-	cm := &coreV1.ConfigMap{Data: map[string]string{"foo": "bar"}}
-	cm.Namespace = namespace
-	cm.GenerateName = "informer-typed-simple-"
-
-	cm, err := client.
-		CoreV1().
-		ConfigMaps(namespace).
-		Create(
-			context.Background(),
-			cm,
-			metav1.CreateOptions{},
-		)
-	if err != nil {
-		panic(err.Error())
-	}
-
-	fmt.Printf("Created ConfigMap %s/%s\n", cm.GetNamespace(), cm.GetName())
-	return cm
-}
 func main() {
 	outsideCluster := flag.Bool("outside-cluster", false, "set to true when run out of cluster. (default: false)")
 	flag.Parse()
@@ -225,20 +55,26 @@ func main() {
 			panic(err.Error())
 		}
 	}
-	cm := createConfigMap(clientset)
-	go func() {
-		for {
-			readConfigMap(clientset, cm.GetName())
-			time.Sleep(5 * time.Second)
-		}
-	}()
 
-	dm := createDeploy(clientset)
-	createService(clientset)
+	dm := createDeployment(clientset)
+	sm := createService(clientset)
+
 	go func() {
-		for {
-			readDeploy(clientset, dm.GetName())
-			time.Sleep(5 * time.Second)
+		for{
+		read, err := clientset.
+			AppsV1().
+			Deployments(namespace).
+			Get(
+				context.Background(),
+				dm.GetName(),
+				metav1.GetOptions{},
+			)
+		if err != nil {
+			panic(err.Error())
+		}
+
+		fmt.Printf("Read Deployment %s/%s\n", namespace, read.GetName())
+		time.Sleep(time.Second)
 		}
 	}()
 
@@ -247,12 +83,176 @@ func main() {
 	signal.Notify(stopChan, os.Interrupt, syscall.SIGTERM, syscall.SIGINT)
 	<-stopChan
 
-	time.Sleep(1 * time.Second)
-	fmt.Println("delete deployment and service")
-	deleteConfigMap(clientset, cm)
-	deleteall(clientset)
-	fmt.Println("done!!")
-
-	//time.Sleep(time.Millisecond * 500)
-
+	fmt.Printf("Delete Deployment %s/%s ", namespace, dm.GetName())
+	deleteDeployment(clientset, dm)
+	fmt.Printf("Delete Service %s/%s ", namespace, sm.GetName())
+	deleteService(clientset, sm)
 }
+
+func int32Ptr(i int32) *int32 { return &i }
+
+func createDeployment(client kubernetes.Interface) *appv1.Deployment {
+	dm := &appv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "orange-app1",
+			Labels: map[string]string{
+				"ntcu-k8s": "hw2",
+			},
+		},
+		Spec: appv1.DeploymentSpec{
+			Replicas: int32Ptr(1),
+			Selector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"ntcu-k8s": "hw2",
+				},
+			},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{
+						"ntcu-k8s": "hw2",
+					},
+				},
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{
+							Name:  "nginx-container",
+							Image: "nginx:1.14.2",
+							Ports: []corev1.ContainerPort{
+								{
+									Name:          "http",
+									ContainerPort: 80,
+									Protocol:      corev1.ProtocolTCP,
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	dm.Namespace = namespace
+
+	dm, err := client.
+		AppsV1().
+		Deployments(namespace).
+		Create(
+			context.Background(),
+			dm,
+			metav1.CreateOptions{},
+		)
+	if err != nil {
+		panic(err.Error())
+	}
+	fmt.Printf("Created Deployment %s/%s\n", dm.GetNamespace(), dm.GetName())
+	return dm
+}
+
+func deleteDeployment(client kubernetes.Interface, dm *appv1.Deployment) {
+	err := client.
+		AppsV1().
+		Deployments(dm.GetNamespace()).
+		Delete(
+			context.Background(),
+			dm.GetName(),
+			metav1.DeleteOptions{},
+		)
+	if err != nil {
+		panic(err.Error())
+	}
+
+	fmt.Printf("Deleted Deployment %s/%s\n", dm.GetNamespace(), dm.GetName())
+}
+
+func deleteService(client kubernetes.Interface, sm *corev1.Service) {
+	err := client.
+		CoreV1().
+		Services(sm.GetNamespace()).
+		Delete(
+			context.Background(),
+			sm.GetName(),
+			metav1.DeleteOptions{},
+		)
+	if err != nil {
+		panic(err.Error())
+	}
+
+	fmt.Printf("Deleted Service %s/%s\n", sm.GetNamespace(), sm.GetName())
+}
+
+var portnum int32 = 80
+
+func createService(client kubernetes.Interface) *corev1.Service {
+	sm := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "orange-service",
+			Labels: map[string]string{
+				"ntcu-k8s": "hw2",
+		},
+},
+		Spec: corev1.ServiceSpec{
+			Selector: map[string]string{
+				"ntcu-k8s": "hw2",
+			},
+			Type: corev1.ServiceTypeNodePort,
+			Ports: []corev1.ServicePort{
+				{
+					Name:       "http",
+					Port:       80,
+					TargetPort: intstr.IntOrString{IntVal: portnum},
+					NodePort:   30100,
+					Protocol:   corev1.ProtocolTCP,
+				},
+			},
+		},
+	}
+	sm.Namespace = namespace
+	sm, err := client.
+		CoreV1().
+		Services(namespace).Create(
+		context.Background(),
+		sm,
+		metav1.CreateOptions{},
+	)
+	if err != nil {
+		panic(err.Error())
+	}
+	fmt.Printf("Created Deplyment %s/%s\n", sm.GetNamespace(), sm.GetName())
+	return sm
+}
+
+func createConfigMap(client kubernetes.Interface) *corev1.ConfigMap {
+	cm := &corev1.ConfigMap{Data: map[string]string{"foo": "bar"}}
+	cm.Namespace = namespace
+	cm.GenerateName = "informer-typed-simple-"
+
+	cm, err := client.
+		CoreV1().
+		ConfigMaps(namespace).
+		Create(
+			context.Background(),
+			cm,
+			metav1.CreateOptions{},
+		)
+	if err != nil {
+		panic(err.Error())
+	}
+
+	fmt.Printf("Created ConfigMap %s/%s\n", cm.GetNamespace(), cm.GetName())
+	return cm
+}
+
+func deleteConfigMap(client kubernetes.Interface, cm *corev1.ConfigMap) {
+	err := client.
+		CoreV1().
+		ConfigMaps(cm.GetNamespace()).
+		Delete(
+			context.Background(),
+			cm.GetName(),
+			metav1.DeleteOptions{},
+		)
+	if err != nil {
+		panic(err.Error())
+	}
+
+	fmt.Printf("Deleted ConfigMap %s/%s\n", cm.GetNamespace(), cm.GetName())
+} 
