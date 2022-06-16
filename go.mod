@@ -1,4 +1,4 @@
-module gitlab.com/ogre0403/110-2-ntcu-k8s-programing
+module gitlab.com/XIEYIZHEN/110-2-ntcu-k8s-programing
 
 go 1.17
 
